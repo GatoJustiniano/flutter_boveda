@@ -1,6 +1,6 @@
 {
-    "name": "boveda_de_suscripciones",
-    "short_name": "boveda_de_suscripciones",
+    "name": "boveda",
+    "short_name": "boveda",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

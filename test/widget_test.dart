@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:boveda_de_suscripciones/main.dart';
+import 'package:boveda/main.dart';
 
 void main() {
   testWidgets('App loads correctly', (WidgetTester tester) async {
