@@ -6,6 +6,7 @@ import '../services/app_lock.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_logo.dart';
+import 'intro_screen.dart';
 
 /// Cubre toda la app mientras está bloqueada. Se coloca en MaterialApp.builder,
 /// por encima del Navigator, así nada de la bóveda queda visible ni accesible.
@@ -48,6 +49,10 @@ class _AppLockGateState extends State<AppLockGate> {
           Positioned.fill(
             child: switch (_lock.state) {
               AppLockState.loading => const ColoredBox(color: AppTheme.primaryDark),
+              AppLockState.intro => IntroView(
+                  onDone: AppLockController.instance.finishIntro,
+                  doneLabel: 'Crear mi PIN',
+                ),
               AppLockState.setup => const _SetupView(),
               _ => const _UnlockView(),
             },

@@ -1,4 +1,5 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/widgets.dart' show SizedBox;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -15,20 +16,42 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('First launch: asks to create a PIN and the vault starts empty',
+  testWidgets('First launch: intro, then create PIN, then empty suggested categories',
       (WidgetTester tester) async {
     AppLockController.instance.debugReset();
     await tester.pumpWidget(const BovedaApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('Crea tu PIN'), findsOneWidget);
-    // La app está oculta detrás del bloqueo.
+    expect(find.text('Bienvenido a tu Bóveda'), findsOneWidget);
+    // La app está oculta detrás de la introducción/bloqueo.
     expect(find.text('🔐 Bóveda de Cuentas'), findsNothing);
+
+    // Recorre la introducción hasta el final.
+    for (var i = 0; i < 3; i++) {
+      await tester.tap(find.text('Siguiente'));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('Solo tú puedes entrar'), findsOneWidget);
+    await tester.tap(find.text('Crear mi PIN'));
+    await tester.pumpAndSettle();
+    expect(find.text('Crea tu PIN'), findsOneWidget);
+
+    // La introducción no vuelve a aparecer en el siguiente arranque.
+    AppLockController.instance.debugReset();
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(const BovedaApp());
+    await tester.pumpAndSettle();
+    expect(find.text('Bienvenido a tu Bóveda'), findsNothing);
+    expect(find.text('Crea tu PIN'), findsOneWidget);
 
     AppLockController.instance.debugSetState(AppLockState.unlocked);
     await tester.pumpAndSettle();
     expect(find.text('🔐 Bóveda de Cuentas'), findsOneWidget);
-    expect(find.text('Tu bóveda está vacía'), findsOneWidget);
+    expect(find.text('Servicios Básicos'), findsOneWidget);
+    expect(find.text('Suscripciones'), findsOneWidget);
+    expect(find.text('Cuentas Bancarias'), findsOneWidget);
+    // Sin datos personales: todas las categorías vacías.
+    expect(find.text('Sin cuentas aún'), findsNWidgets(3));
   });
 
   testWidgets('With a PIN set, the app opens locked', (WidgetTester tester) async {

@@ -6,6 +6,7 @@ import '../widgets/category_card.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/pin_dialogs.dart';
 import '../services/app_lock.dart';
+import 'intro_screen.dart';
 import '../services/auth_service.dart';
 import '../services/secure_clipboard.dart';
 
@@ -186,6 +187,13 @@ class _HomeScreenState extends State<HomeScreen>
             await _changePin();
           case 'bio':
             await _toggleBiometrics();
+          case 'help':
+            await Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (context) => IntroView(
+                onDone: () => Navigator.of(context).pop(),
+                doneLabel: 'Entendido',
+              ),
+            ));
         }
       },
       itemBuilder: (context) => const [
@@ -210,6 +218,14 @@ class _HomeScreenState extends State<HomeScreen>
           child: ListTile(
             leading: Icon(Icons.fingerprint_rounded),
             title: Text('Huella / rostro'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        PopupMenuItem(
+          value: 'help',
+          child: ListTile(
+            leading: Icon(Icons.help_outline_rounded),
+            title: Text('Cómo usar'),
             contentPadding: EdgeInsets.zero,
           ),
         ),

@@ -104,6 +104,13 @@ class VaultData {
     );
   }
 
-  /// La app arranca vacía: el usuario agrega sus propias categorías.
-  factory VaultData.withDefaults() => VaultData();
+  /// Primera ejecución: la app arranca sin datos personales.
+  ///
+  /// Se crean categorías sugeridas SIN cuentas, como guía para empezar.
+  /// No colocar datos reales aquí: este archivo forma parte del repositorio.
+  factory VaultData.withDefaults() => VaultData(categories: [
+        Category(name: 'Servicios Básicos', iconIndex: 0, colorIndex: 0),
+        Category(name: 'Suscripciones', iconIndex: 6, colorIndex: 4),
+        Category(name: 'Cuentas Bancarias', iconIndex: 5, colorIndex: 2),
+      ]);
 }

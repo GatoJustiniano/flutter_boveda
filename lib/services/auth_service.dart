@@ -1,9 +1,9 @@
 import 'dart:convert';
-import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:local_auth/local_auth.dart';
 
 import 'secure_store.dart';
@@ -103,8 +103,11 @@ class AuthService {
 
   static Future<Uint8List> _derive(String pin, List<int> salt) {
     // Se calcula en otro isolate para no congelar la interfaz.
-    return Isolate.run(() => _pbkdf2(utf8.encode(pin), salt, _pbkdf2Iterations));
+    return compute(_pbkdf2Entry, [utf8.encode(pin), List<int>.of(salt)]);
   }
+
+  static Uint8List _pbkdf2Entry(List<List<int>> args) =>
+      _pbkdf2(args[0], args[1], _pbkdf2Iterations);
 
   /// PBKDF2-HMAC-SHA256, 32 bytes de salida.
   static Uint8List _pbkdf2(List<int> password, List<int> salt, int iterations) {

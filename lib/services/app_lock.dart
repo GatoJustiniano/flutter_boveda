@@ -1,8 +1,9 @@
 import 'package:flutter/widgets.dart';
 
+import '../screens/intro_screen.dart';
 import 'auth_service.dart';
 
-enum AppLockState { loading, setup, locked, unlocked }
+enum AppLockState { loading, intro, setup, locked, unlocked }
 
 /// Bloqueo de toda la app: al abrirla y cada vez que vuelve de segundo plano
 /// se exige huella (o el PIN como respaldo).
@@ -18,7 +19,17 @@ class AppLockController extends ChangeNotifier with WidgetsBindingObserver {
     if (_initialized) return;
     _initialized = true;
     WidgetsBinding.instance.addObserver(this);
-    _set(await AuthService.instance.hasPin() ? AppLockState.locked : AppLockState.setup);
+    if (await AuthService.instance.hasPin()) {
+      _set(AppLockState.locked);
+    } else {
+      _set(await IntroView.wasSeen() ? AppLockState.setup : AppLockState.intro);
+    }
+  }
+
+  /// Fin de la introducción del primer uso: pasa a crear el PIN.
+  Future<void> finishIntro() async {
+    await IntroView.markSeen();
+    _set(AppLockState.setup);
   }
 
   void unlock() {
