@@ -1,10 +1,13 @@
+import 'dart:async';
+
 import 'package:material_ui/material_ui.dart';
 import '../models/vault_models.dart';
 import '../theme/app_theme.dart';
+import 'pin_dialogs.dart';
 
 class CategoryCard extends StatelessWidget {
   final Category category;
-  final void Function(String value, String label) onCopy;
+  final void Function(AccountEntry entry) onCopy;
   final VoidCallback onEditCategory;
   final VoidCallback onDeleteCategory;
   final VoidCallback onAddEntry;
@@ -158,7 +161,7 @@ class CategoryCard extends StatelessWidget {
                 return _EntryTile(
                   entry: entry,
                   color: color,
-                  onCopy: () => onCopy(entry.value, entry.label),
+                  onCopy: () => onCopy(entry),
                   onEdit: () => onEditEntry(entry),
                   onDelete: () => onDeleteEntry(entry),
                 );
@@ -186,7 +189,7 @@ class CategoryCard extends StatelessWidget {
   }
 }
 
-class _EntryTile extends StatelessWidget {
+class _EntryTile extends StatefulWidget {
   final AccountEntry entry;
   final Color color;
   final VoidCallback onCopy;
@@ -202,9 +205,51 @@ class _EntryTile extends StatelessWidget {
   });
 
   @override
+  State<_EntryTile> createState() => _EntryTileState();
+}
+
+class _EntryTileState extends State<_EntryTile> {
+  static const _revealFor = Duration(seconds: 15);
+  bool _revealed = false;
+  Timer? _hideTimer;
+
+  AccountEntry get entry => widget.entry;
+  Color get color => widget.color;
+
+  @override
+  void dispose() {
+    _hideTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _toggleReveal() async {
+    if (_revealed) {
+      _hide();
+      return;
+    }
+    if (!await ensureUnlocked(context, reason: 'Ver ${entry.label}')) return;
+    if (!mounted) return;
+    setState(() => _revealed = true);
+    _hideTimer?.cancel();
+    _hideTimer = Timer(_revealFor, _hide);
+  }
+
+  void _hide() {
+    _hideTimer?.cancel();
+    if (mounted) setState(() => _revealed = false);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final masked = entry.isSecret && !_revealed && entry.value.isNotEmpty;
+    final displayValue = entry.value.isEmpty
+        ? '(sin valor)'
+        : masked
+            ? '••••••••'
+            : entry.value;
+
     return InkWell(
-      onTap: onCopy,
+      onTap: widget.onCopy,
       onLongPress: () => _showOptions(context),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -214,18 +259,30 @@ class _EntryTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    entry.label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: color.withValues(alpha: 0.9),
-                      letterSpacing: 0.5,
-                    ),
+                  Row(
+                    children: [
+                      if (entry.isSecret)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: Icon(Icons.lock_rounded,
+                              size: 13, color: color.withValues(alpha: 0.9)),
+                        ),
+                      Flexible(
+                        child: Text(
+                          entry.label,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: color.withValues(alpha: 0.9),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    entry.value.isEmpty ? '(sin valor)' : entry.value,
+                    displayValue,
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
@@ -239,10 +296,20 @@ class _EntryTile extends StatelessWidget {
                 ],
               ),
             ),
+            if (entry.isSecret && entry.value.isNotEmpty)
+              IconButton(
+                tooltip: _revealed ? 'Ocultar' : 'Mostrar',
+                onPressed: _toggleReveal,
+                icon: Icon(
+                  _revealed ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                  color: AppTheme.textSecondary,
+                  size: 20,
+                ),
+              ),
             Material(
               color: Colors.transparent,
               child: InkWell(
-                onTap: onCopy,
+                onTap: widget.onCopy,
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
                   padding: const EdgeInsets.all(10),
@@ -303,7 +370,7 @@ class _EntryTile extends StatelessWidget {
                 title: const Text('Copiar'),
                 onTap: () {
                   Navigator.pop(context);
-                  onCopy();
+                  widget.onCopy();
                 },
               ),
               ListTile(
@@ -311,7 +378,7 @@ class _EntryTile extends StatelessWidget {
                 title: const Text('Editar'),
                 onTap: () {
                   Navigator.pop(context);
-                  onEdit();
+                  widget.onEdit();
                 },
               ),
               ListTile(
@@ -319,7 +386,7 @@ class _EntryTile extends StatelessWidget {
                 title: const Text('Eliminar', style: TextStyle(color: AppTheme.accentRed)),
                 onTap: () {
                   Navigator.pop(context);
-                  onDelete();
+                  widget.onDelete();
                 },
               ),
             ],

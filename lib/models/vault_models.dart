@@ -6,22 +6,29 @@ class AccountEntry {
   String label;
   String value;
 
+  /// Si es true, el valor se oculta y se requiere PIN/huella para verlo,
+  /// copiarlo o editarlo.
+  bool isSecret;
+
   AccountEntry({
     String? id,
     required this.label,
     required this.value,
+    this.isSecret = false,
   }) : id = id ?? const Uuid().v4();
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'label': label,
         'value': value,
+        'secret': isSecret,
       };
 
   factory AccountEntry.fromJson(Map<String, dynamic> json) => AccountEntry(
         id: json['id'] as String,
         label: json['label'] as String,
         value: json['value'] as String,
+        isSecret: json['secret'] as bool? ?? false,
       );
 }
 
@@ -77,6 +84,8 @@ class VaultData {
     );
   }
 
+  /// Datos de ejemplo para la primera ejecución. No colocar datos reales aquí:
+  /// este archivo forma parte del repositorio.
   factory VaultData.withDefaults() {
     return VaultData(
       categories: [
@@ -85,9 +94,8 @@ class VaultData {
           iconIndex: 0,
           colorIndex: 0,
           entries: [
-            AccountEntry(label: 'CRE', value: '670942'),
-            AccountEntry(label: 'SAGUAPAC', value: '270709600'),
-            AccountEntry(label: 'ENTEL', value: ''),
+            AccountEntry(label: 'Luz', value: ''),
+            AccountEntry(label: 'Agua', value: ''),
           ],
         ),
         Category(
@@ -95,16 +103,8 @@ class VaultData {
           iconIndex: 6,
           colorIndex: 4,
           entries: [
-            AccountEntry(label: 'Netflix', value: 'correo@ejemplo.com'),
-            AccountEntry(label: 'Spotify', value: 'correo@ejemplo.com'),
-          ],
-        ),
-        Category(
-          name: 'Cuentas Bancarias',
-          iconIndex: 5,
-          colorIndex: 1,
-          entries: [
-            AccountEntry(label: 'Banco Ejemplo', value: '1234567890'),
+            AccountEntry(label: 'Netflix - correo', value: ''),
+            AccountEntry(label: 'Netflix - contraseña', value: '', isSecret: true),
           ],
         ),
       ],

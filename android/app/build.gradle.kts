@@ -47,3 +47,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Requerido por el tema AppCompat (diálogo biométrico en Android 8 y anteriores).
+    implementation("androidx.appcompat:appcompat:1.7.0")
+}

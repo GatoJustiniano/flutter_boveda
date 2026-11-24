@@ -1,31 +1,52 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/vault_models.dart';
+import '../services/secure_store.dart';
 
 class VaultState extends ChangeNotifier {
   VaultData _data = VaultData();
   bool _isLoaded = false;
+  String? _loadError;
 
   VaultData get data => _data;
   bool get isLoaded => _isLoaded;
+
+  /// Si no se pudo descifrar/leer la bóveda. En ese caso NO se guarda nada
+  /// para no sobrescribir los datos existentes.
+  String? get loadError => _loadError;
   List<Category> get categories => _data.categories;
 
+  static const _legacyPrefsKey = 'vault_data';
+
   Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonString = prefs.getString('vault_data');
-    if (jsonString != null && jsonString.isNotEmpty) {
-      _data = VaultData.fromJsonString(jsonString);
-    } else {
-      _data = VaultData.withDefaults();
-      await _save();
+    try {
+      final stored = await secureStore.read(key: StoreKeys.vault);
+      if (stored != null && stored.isNotEmpty) {
+        _data = VaultData.fromJsonString(stored);
+      } else {
+        // Migración: versiones anteriores guardaban todo en texto plano
+        // en SharedPreferences. Se mueve al almacenamiento cifrado y se borra.
+        final prefs = await SharedPreferences.getInstance();
+        final legacy = prefs.getString(_legacyPrefsKey);
+        if (legacy != null && legacy.isNotEmpty) {
+          _data = VaultData.fromJsonString(legacy);
+          await _save();
+          await prefs.remove(_legacyPrefsKey);
+        } else {
+          _data = VaultData.withDefaults();
+          await _save();
+        }
+      }
+    } catch (e) {
+      _loadError = e.toString();
     }
     _isLoaded = true;
     notifyListeners();
   }
 
   Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('vault_data', _data.toJsonString());
+    if (_loadError != null) return;
+    await secureStore.write(key: StoreKeys.vault, value: _data.toJsonString());
   }
 
   // Category operations
@@ -66,11 +87,13 @@ class VaultState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> updateEntry(String categoryId, String entryId, {String? label, String? value}) async {
+  Future<void> updateEntry(String categoryId, String entryId,
+      {String? label, String? value, bool? isSecret}) async {
     final cat = _data.categories.firstWhere((c) => c.id == categoryId);
     final entry = cat.entries.firstWhere((e) => e.id == entryId);
     if (label != null) entry.label = label;
     if (value != null) entry.value = value;
+    if (isSecret != null) entry.isSecret = isSecret;
     await _save();
     notifyListeners();
   }

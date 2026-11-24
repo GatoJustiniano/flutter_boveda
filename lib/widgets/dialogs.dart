@@ -141,64 +141,103 @@ Future<Category?> showCategoryDialog(BuildContext context, {Category? category})
   );
 }
 
-Future<AccountEntry?> showEntryDialog(BuildContext context, {AccountEntry? entry}) async {
+Future<AccountEntry?> showEntryDialog(BuildContext context,
+    {AccountEntry? entry, bool defaultSecret = false}) async {
   final isEditing = entry != null;
   final labelController = TextEditingController(text: entry?.label ?? '');
   final valueController = TextEditingController(text: entry?.value ?? '');
+  bool isSecret = entry?.isSecret ?? defaultSecret;
+  bool showValue = !isSecret;
 
-  return showDialog<AccountEntry>(
+  final result = await showDialog<AccountEntry>(
     context: context,
     builder: (context) {
-      return AlertDialog(
-        title: Text(isEditing ? 'Editar Cuenta' : 'Nueva Cuenta'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: labelController,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Nombre / Etiqueta',
-                hintText: 'Ej: CRE, Netflix, Correo...',
-                prefixIcon: Icon(Icons.label_outline_rounded),
-              ),
-              textCapitalization: TextCapitalization.words,
+      return StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text(isEditing ? 'Editar Cuenta' : 'Nueva Cuenta'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: labelController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre / Etiqueta',
+                    hintText: 'Ej: CRE, Netflix - contraseña...',
+                    prefixIcon: Icon(Icons.label_outline_rounded),
+                  ),
+                  textCapitalization: TextCapitalization.words,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: valueController,
+                  obscureText: isSecret && !showValue,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  decoration: InputDecoration(
+                    labelText: 'Valor / Número / Correo',
+                    hintText: 'Ej: 670942, correo@mail.com',
+                    prefixIcon: const Icon(Icons.content_copy_rounded),
+                    suffixIcon: isSecret
+                        ? IconButton(
+                            icon: Icon(showValue
+                                ? Icons.visibility_off_rounded
+                                : Icons.visibility_rounded),
+                            onPressed: () =>
+                                setState(() => showValue = !showValue),
+                          )
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: isSecret,
+                  onChanged: (v) => setState(() {
+                    isSecret = v;
+                    showValue = !v;
+                  }),
+                  secondary: Icon(
+                    isSecret ? Icons.lock_rounded : Icons.lock_open_rounded,
+                    color: isSecret ? AppTheme.accentOrange : AppTheme.textSecondary,
+                  ),
+                  title: const Text('Protegida'),
+                  subtitle: const Text(
+                    'Oculta el valor y pide PIN o huella para verlo o copiarlo',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: valueController,
-              decoration: const InputDecoration(
-                labelText: 'Valor / Número / Correo',
-                hintText: 'Ej: 670942, correo@mail.com',
-                prefixIcon: Icon(Icons.content_copy_rounded),
-              ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final label = labelController.text.trim();
+                if (label.isEmpty) return;
+                Navigator.pop(
+                  context,
+                  AccountEntry(
+                    id: entry?.id,
+                    label: label,
+                    value: valueController.text.trim(),
+                    isSecret: isSecret,
+                  ),
+                );
+              },
+              child: Text(isEditing ? 'Guardar' : 'Agregar'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final label = labelController.text.trim();
-              if (label.isEmpty) return;
-              Navigator.pop(
-                context,
-                AccountEntry(
-                  id: entry?.id,
-                  label: label,
-                  value: valueController.text.trim(),
-                ),
-              );
-            },
-            child: Text(isEditing ? 'Guardar' : 'Agregar'),
-          ),
-        ],
       );
     },
   );
+  return result;
 }
 
 Future<bool> showConfirmDialog(

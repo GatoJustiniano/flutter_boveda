@@ -1,10 +1,12 @@
 import 'package:material_ui/material_ui.dart';
-import 'package:flutter/services.dart';
 import '../providers/vault_provider.dart';
 import '../models/vault_models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/category_card.dart';
 import '../widgets/dialogs.dart';
+import '../widgets/pin_dialogs.dart';
+import '../services/auth_service.dart';
+import '../services/secure_clipboard.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,15 +15,31 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   String _searchQuery = '';
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Al salir de la app, las cuentas protegidas vuelven a bloquearse.
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      AuthService.instance.lock();
+    }
   }
 
   @override
@@ -36,13 +54,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       );
     }
 
+    if (vault.loadError != null) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'No se pudo abrir la bóveda cifrada.\n\n${vault.loadError}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppTheme.accentRed),
+            ),
+          ),
+        ),
+      );
+    }
+
     final filteredCategories = _searchQuery.isEmpty
         ? vault.categories
         : vault.categories.where((cat) {
             final nameMatch = cat.name.toLowerCase().contains(_searchQuery.toLowerCase());
             final entryMatch = cat.entries.any((e) =>
                 e.label.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                e.value.toLowerCase().contains(_searchQuery.toLowerCase()));
+                (!e.isSecret &&
+                    e.value.toLowerCase().contains(_searchQuery.toLowerCase())));
             return nameMatch || entryMatch;
           }).toList();
 
@@ -63,6 +97,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               )
             : const Text('🔐 Bóveda de Cuentas'),
         actions: [
+          if (!_isSearching) _buildSecurityMenu(),
           IconButton(
             icon: Icon(_isSearching ? Icons.close : Icons.search),
             onPressed: () {
@@ -86,7 +121,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 final category = filteredCategories[index];
                 return CategoryCard(
                   category: category,
-                  onCopy: (value, label) => _copyToClipboard(value, label),
+                  onCopy: (entry) => _copyEntry(entry),
                   onEditCategory: () => _showEditCategoryDialog(category),
                   onDeleteCategory: () => _confirmDeleteCategory(category),
                   onAddEntry: () => _showAddEntryDialog(category),
@@ -138,28 +173,109 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  void _copyToClipboard(String value, String label) {
-    if (value.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('⚠️ $label no tiene valor para copiar'),
-          duration: const Duration(seconds: 2),
+  Widget _buildSecurityMenu() {
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.shield_outlined),
+      tooltip: 'Seguridad',
+      onSelected: (value) async {
+        switch (value) {
+          case 'lock':
+            AuthService.instance.lock();
+            setState(() {});
+            _showSnack('🔒 Cuentas protegidas bloqueadas');
+          case 'pin':
+            await _changePin();
+          case 'bio':
+            await _toggleBiometrics();
+        }
+      },
+      itemBuilder: (context) => const [
+        PopupMenuItem(
+          value: 'lock',
+          child: ListTile(
+            leading: Icon(Icons.lock_rounded),
+            title: Text('Bloquear ahora'),
+            contentPadding: EdgeInsets.zero,
+          ),
         ),
-      );
+        PopupMenuItem(
+          value: 'pin',
+          child: ListTile(
+            leading: Icon(Icons.pin_rounded),
+            title: Text('Crear / cambiar PIN'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        PopupMenuItem(
+          value: 'bio',
+          child: ListTile(
+            leading: Icon(Icons.fingerprint_rounded),
+            title: Text('Huella / rostro'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _changePin() async {
+    final auth = AuthService.instance;
+    if (await auth.hasPin()) {
+      if (!mounted) return;
+      // Para cambiar el PIN siempre se pide el PIN actual (no basta la huella).
+      if (!await showVerifyPinDialog(context, title: 'PIN actual')) return;
+    }
+    if (!mounted) return;
+    if (await showCreatePinDialog(context, isChange: true)) {
+      _showSnack('✅ PIN guardado');
+    }
+  }
+
+  Future<void> _toggleBiometrics() async {
+    final auth = AuthService.instance;
+    if (!await auth.canUseBiometrics()) {
+      _showSnack('Este teléfono no tiene huella/rostro configurado');
       return;
     }
-    Clipboard.setData(ClipboardData(text: value));
+    if (!await auth.hasPin()) {
+      _showSnack('Primero crea un PIN');
+      return;
+    }
+    final enabled = await auth.biometricsEnabled();
+    if (enabled) {
+      await auth.setBiometricsEnabled(false);
+      _showSnack('Huella desactivada: se pedirá el PIN');
+      return;
+    }
+    if (!mounted) return;
+    if (!await showVerifyPinDialog(context)) return;
+    if (await auth.authenticateWithBiometrics('Confirma tu huella')) {
+      await auth.setBiometricsEnabled(true);
+      _showSnack('✅ Huella activada');
+    }
+  }
+
+  void _showSnack(String text) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('✅ $label copiado al portapapeles'),
-        duration: const Duration(seconds: 2),
-        action: SnackBarAction(
-          label: 'OK',
-          textColor: AppTheme.accentBlue,
-          onPressed: () {},
-        ),
-      ),
+      SnackBar(content: Text(text), duration: const Duration(seconds: 2)),
     );
+  }
+
+  Future<void> _copyEntry(AccountEntry entry) async {
+    if (entry.value.isEmpty) {
+      _showSnack('⚠️ ${entry.label} no tiene valor para copiar');
+      return;
+    }
+    if (entry.isSecret &&
+        !await ensureUnlocked(context, reason: 'Copiar ${entry.label}')) {
+      return;
+    }
+    await SecureClipboard.copy(entry.value, sensitive: entry.isSecret);
+    _showSnack(entry.isSecret
+        ? '✅ ${entry.label} copiado · se borrará en '
+            '${SecureClipboard.secretClearAfter.inSeconds} s'
+        : '✅ ${entry.label} copiado al portapapeles');
   }
 
   void _showAddCategoryDialog() async {
@@ -182,6 +298,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _confirmDeleteCategory(Category category) async {
+    if (category.entries.any((e) => e.isSecret) &&
+        !await ensureUnlocked(context, reason: 'Eliminar ${category.name}')) {
+      return;
+    }
+    if (!mounted) return;
     final confirmed = await showConfirmDialog(
       context,
       title: 'Eliminar Categoría',
@@ -200,6 +321,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _showEditEntryDialog(Category category, AccountEntry entry) async {
+    if (entry.isSecret &&
+        !await ensureUnlocked(context, reason: 'Editar ${entry.label}')) {
+      return;
+    }
+    if (!mounted) return;
     final result = await showEntryDialog(context, entry: entry);
     if (result != null && mounted) {
       VaultProvider.of(context).updateEntry(
@@ -207,11 +333,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         entry.id,
         label: result.label,
         value: result.value,
+        isSecret: result.isSecret,
       );
     }
   }
 
   void _confirmDeleteEntry(Category category, AccountEntry entry) async {
+    if (entry.isSecret &&
+        !await ensureUnlocked(context, reason: 'Eliminar ${entry.label}')) {
+      return;
+    }
+    if (!mounted) return;
     final confirmed = await showConfirmDialog(
       context,
       title: 'Eliminar Cuenta',
