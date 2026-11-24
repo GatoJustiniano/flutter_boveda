@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import '../services/app_lock.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_logo.dart';
 
 /// Cubre toda la app mientras está bloqueada. Se coloca en MaterialApp.builder,
 /// por encima del Navigator, así nada de la bóveda queda visible ni accesible.
@@ -374,7 +375,7 @@ class _LockScaffold extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: Column(
                 children: [
-                  const Icon(Icons.lock_rounded, size: 56, color: AppTheme.accentBlue),
+                  const AppLogo(),
                   const SizedBox(height: 16),
                   Text(title,
                       style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
