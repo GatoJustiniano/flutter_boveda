@@ -35,6 +35,9 @@ class AuthService {
   final LocalAuthentication _localAuth = LocalAuthentication();
   DateTime? _unlockedUntil;
 
+  /// true mientras el diálogo de huella está abierto.
+  bool authInProgress = false;
+
   bool get isUnlocked =>
       _unlockedUntil != null && DateTime.now().isBefore(_unlockedUntil!);
 
@@ -147,6 +150,7 @@ class AuthService {
   /// Pide huella/rostro. Solo biometría (no el patrón del teléfono),
   /// para que el PIN de la bóveda siga siendo el respaldo.
   Future<bool> authenticateWithBiometrics(String reason) async {
+    authInProgress = true;
     try {
       final ok = await _localAuth.authenticate(
         localizedReason: reason,
@@ -156,6 +160,9 @@ class AuthService {
       return ok;
     } catch (_) {
       return false;
+    } finally {
+      // El resume de la app llega justo después de cerrar el diálogo.
+      Future.delayed(const Duration(milliseconds: 800), () => authInProgress = false);
     }
   }
 }

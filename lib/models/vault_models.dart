@@ -1,6 +1,10 @@
 import 'dart:convert';
 import 'package:uuid/uuid.dart';
 
+/// account: un solo valor (número de cuenta, código de cliente…).
+/// subscription: correo + contraseña (la contraseña siempre está protegida).
+enum EntryType { account, subscription }
+
 class AccountEntry {
   final String id;
   String label;
@@ -10,18 +14,32 @@ class AccountEntry {
   /// copiarlo o editarlo.
   bool isSecret;
 
+  EntryType type;
+
+  /// Solo para suscripciones. Siempre se trata como protegida.
+  String password;
+
   AccountEntry({
     String? id,
     required this.label,
     required this.value,
     this.isSecret = false,
+    this.type = EntryType.account,
+    this.password = '',
   }) : id = id ?? const Uuid().v4();
+
+  bool get isSubscription => type == EntryType.subscription;
+
+  /// Ver, editar o borrar esta cuenta requiere PIN/huella.
+  bool get requiresAuth => isSecret || isSubscription;
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'label': label,
         'value': value,
         'secret': isSecret,
+        'type': type.name,
+        if (password.isNotEmpty) 'password': password,
       };
 
   factory AccountEntry.fromJson(Map<String, dynamic> json) => AccountEntry(
@@ -29,6 +47,8 @@ class AccountEntry {
         label: json['label'] as String,
         value: json['value'] as String,
         isSecret: json['secret'] as bool? ?? false,
+        type: EntryType.values.asNameMap()[json['type']] ?? EntryType.account,
+        password: json['password'] as String? ?? '',
       );
 }
 
@@ -84,30 +104,6 @@ class VaultData {
     );
   }
 
-  /// Datos de ejemplo para la primera ejecución. No colocar datos reales aquí:
-  /// este archivo forma parte del repositorio.
-  factory VaultData.withDefaults() {
-    return VaultData(
-      categories: [
-        Category(
-          name: 'Servicios Básicos',
-          iconIndex: 0,
-          colorIndex: 0,
-          entries: [
-            AccountEntry(label: 'Luz', value: ''),
-            AccountEntry(label: 'Agua', value: ''),
-          ],
-        ),
-        Category(
-          name: 'Suscripciones',
-          iconIndex: 6,
-          colorIndex: 4,
-          entries: [
-            AccountEntry(label: 'Netflix - correo', value: ''),
-            AccountEntry(label: 'Netflix - contraseña', value: '', isSecret: true),
-          ],
-        ),
-      ],
-    );
-  }
+  /// La app arranca vacía: el usuario agrega sus propias categorías.
+  factory VaultData.withDefaults() => VaultData();
 }

@@ -88,12 +88,14 @@ class VaultState extends ChangeNotifier {
   }
 
   Future<void> updateEntry(String categoryId, String entryId,
-      {String? label, String? value, bool? isSecret}) async {
+      {String? label, String? value, bool? isSecret, EntryType? type, String? password}) async {
     final cat = _data.categories.firstWhere((c) => c.id == categoryId);
     final entry = cat.entries.firstWhere((e) => e.id == entryId);
     if (label != null) entry.label = label;
     if (value != null) entry.value = value;
     if (isSecret != null) entry.isSecret = isSecret;
+    if (type != null) entry.type = type;
+    if (password != null) entry.password = password;
     await _save();
     notifyListeners();
   }

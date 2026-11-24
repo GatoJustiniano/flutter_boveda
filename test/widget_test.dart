@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:boveda/main.dart';
 import 'package:boveda/models/vault_models.dart';
 import 'package:boveda/providers/vault_provider.dart';
+import 'package:boveda/services/app_lock.dart';
 import 'package:boveda/services/auth_service.dart';
 import 'package:boveda/services/secure_store.dart';
 
@@ -14,28 +15,68 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('App loads correctly', (WidgetTester tester) async {
+  testWidgets('First launch: asks to create a PIN and the vault starts empty',
+      (WidgetTester tester) async {
+    AppLockController.instance.debugReset();
     await tester.pumpWidget(const BovedaApp());
     await tester.pumpAndSettle();
 
+    expect(find.text('Crea tu PIN'), findsOneWidget);
+    // La app está oculta detrás del bloqueo.
+    expect(find.text('🔐 Bóveda de Cuentas'), findsNothing);
+
+    AppLockController.instance.debugSetState(AppLockState.unlocked);
+    await tester.pumpAndSettle();
     expect(find.text('🔐 Bóveda de Cuentas'), findsOneWidget);
+    expect(find.text('Tu bóveda está vacía'), findsOneWidget);
   });
 
-  testWidgets('Protected values are masked', (WidgetTester tester) async {
+  testWidgets('With a PIN set, the app opens locked', (WidgetTester tester) async {
+    FlutterSecureStorage.setMockInitialValues({StoreKeys.pinHash: 'x', StoreKeys.pinSalt: 'x'});
+    AppLockController.instance.debugReset();
+    await tester.pumpWidget(const BovedaApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bóveda bloqueada'), findsOneWidget);
+    expect(find.text('🔐 Bóveda de Cuentas'), findsNothing);
+  });
+
+  testWidgets('Subscription passwords and protected values are masked',
+      (WidgetTester tester) async {
     final data = VaultData(categories: [
-      Category(name: 'Subs', entries: [
-        AccountEntry(label: 'Netflix - correo', value: 'yo@mail.com'),
-        AccountEntry(label: 'Netflix - clave', value: 'superSecreta', isSecret: true),
+      Category(name: 'Suscripciones', entries: [
+        AccountEntry(
+          label: 'Netflix',
+          value: 'yo@mail.com',
+          type: EntryType.subscription,
+          password: 'superSecreta',
+        ),
+        AccountEntry(label: 'PIN tarjeta', value: '9876', isSecret: true),
       ]),
     ]);
     FlutterSecureStorage.setMockInitialValues({StoreKeys.vault: data.toJsonString()});
+    AppLockController.instance.debugSetState(AppLockState.unlocked);
 
     await tester.pumpWidget(const BovedaApp());
     await tester.pumpAndSettle();
 
     expect(find.text('yo@mail.com'), findsOneWidget);
     expect(find.text('superSecreta'), findsNothing);
-    expect(find.text('••••••••'), findsOneWidget);
+    expect(find.text('9876'), findsNothing);
+    expect(find.text('••••••••'), findsNWidgets(2));
+  });
+
+  test('Subscription entries round-trip through JSON', () {
+    final e = AccountEntry(
+        label: 'Spotify', value: 'a@b.com', type: EntryType.subscription, password: 'p w');
+    final back = AccountEntry.fromJson(e.toJson());
+    expect(back.isSubscription, isTrue);
+    expect(back.password, 'p w');
+    expect(back.requiresAuth, isTrue);
+    // Datos guardados por la versión anterior (sin "type") siguen funcionando.
+    final old = AccountEntry.fromJson({'id': '1', 'label': 'CRE', 'value': '1'});
+    expect(old.type, EntryType.account);
+    expect(old.requiresAuth, isFalse);
   });
 
   test('Legacy SharedPreferences data is migrated and removed', () async {

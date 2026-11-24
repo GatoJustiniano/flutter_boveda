@@ -5,6 +5,7 @@ import '../theme/app_theme.dart';
 import '../widgets/category_card.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/pin_dialogs.dart';
+import '../services/app_lock.dart';
 import '../services/auth_service.dart';
 import '../services/secure_clipboard.dart';
 
@@ -121,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen>
                 final category = filteredCategories[index];
                 return CategoryCard(
                   category: category,
-                  onCopy: (entry) => _copyEntry(entry),
+                  onCopy: (entry, password) => _copyEntry(entry, password: password),
                   onEditCategory: () => _showEditCategoryDialog(category),
                   onDeleteCategory: () => _confirmDeleteCategory(category),
                   onAddEntry: () => _showAddEntryDialog(category),
@@ -180,9 +181,7 @@ class _HomeScreenState extends State<HomeScreen>
       onSelected: (value) async {
         switch (value) {
           case 'lock':
-            AuthService.instance.lock();
-            setState(() {});
-            _showSnack('🔒 Cuentas protegidas bloqueadas');
+            AppLockController.instance.lockNow();
           case 'pin':
             await _changePin();
           case 'bio':
@@ -262,20 +261,22 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Future<void> _copyEntry(AccountEntry entry) async {
-    if (entry.value.isEmpty) {
-      _showSnack('⚠️ ${entry.label} no tiene valor para copiar');
+  Future<void> _copyEntry(AccountEntry entry, {bool password = false}) async {
+    final text = password ? entry.password : entry.value;
+    final what = password ? 'Contraseña de ${entry.label}' : entry.label;
+    final sensitive = password || entry.isSecret;
+    if (text.isEmpty) {
+      _showSnack('⚠️ $what no tiene valor para copiar');
       return;
     }
-    if (entry.isSecret &&
-        !await ensureUnlocked(context, reason: 'Copiar ${entry.label}')) {
+    if (sensitive && !await ensureUnlocked(context, reason: 'Copiar $what')) {
       return;
     }
-    await SecureClipboard.copy(entry.value, sensitive: entry.isSecret);
-    _showSnack(entry.isSecret
-        ? '✅ ${entry.label} copiado · se borrará en '
+    await SecureClipboard.copy(text, sensitive: sensitive);
+    _showSnack(sensitive
+        ? '✅ $what copiado · se borrará en '
             '${SecureClipboard.secretClearAfter.inSeconds} s'
-        : '✅ ${entry.label} copiado al portapapeles');
+        : '✅ $what copiado al portapapeles');
   }
 
   void _showAddCategoryDialog() async {
@@ -298,7 +299,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _confirmDeleteCategory(Category category) async {
-    if (category.entries.any((e) => e.isSecret) &&
+    if (category.entries.any((e) => e.requiresAuth) &&
         !await ensureUnlocked(context, reason: 'Eliminar ${category.name}')) {
       return;
     }
@@ -314,14 +315,18 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _showAddEntryDialog(Category category) async {
-    final result = await showEntryDialog(context);
+    // En categorías de suscripciones se sugiere el tipo "Suscripción".
+    final isSubCategory = category.name.toLowerCase().contains('suscrip') ||
+        category.entries.any((e) => e.isSubscription);
+    final result = await showEntryDialog(context,
+        defaultType: isSubCategory ? EntryType.subscription : EntryType.account);
     if (result != null && mounted) {
       VaultProvider.of(context).addEntry(category.id, result);
     }
   }
 
   void _showEditEntryDialog(Category category, AccountEntry entry) async {
-    if (entry.isSecret &&
+    if (entry.requiresAuth &&
         !await ensureUnlocked(context, reason: 'Editar ${entry.label}')) {
       return;
     }
@@ -334,12 +339,14 @@ class _HomeScreenState extends State<HomeScreen>
         label: result.label,
         value: result.value,
         isSecret: result.isSecret,
+        type: result.type,
+        password: result.password,
       );
     }
   }
 
   void _confirmDeleteEntry(Category category, AccountEntry entry) async {
-    if (entry.isSecret &&
+    if (entry.requiresAuth &&
         !await ensureUnlocked(context, reason: 'Eliminar ${entry.label}')) {
       return;
     }

@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 import 'screens/home_screen.dart';
+import 'screens/lock_screen.dart';
 import 'theme/app_theme.dart';
 import 'providers/vault_provider.dart';
 
@@ -18,6 +19,8 @@ class BovedaApp extends StatelessWidget {
         title: 'Bóveda de Suscripciones',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.darkTheme,
+        // El bloqueo envuelve al Navigator completo: cubre también diálogos abiertos.
+        builder: (context, child) => AppLockGate(child: child!),
         home: const HomeScreen(),
       ),
     );
