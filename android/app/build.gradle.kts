@@ -1,11 +1,30 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// ---------------------------------------------------------------- Firma release
+// La llave de firma NUNCA va al repositorio. Se lee de:
+//   1) android/key.properties (en tu PC; está en .gitignore), o
+//   2) variables de entorno (GitHub Actions, desde los secretos del repo).
+// Si no hay llave, el release se firma con la llave de depuración (solo para pruebas locales).
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) FileInputStream(file).use { load(it) }
+}
+
+fun signingValue(propName: String, envName: String): String? =
+    keystoreProperties.getProperty(propName) ?: System.getenv(envName)
+
+val releaseStoreFile = signingValue("storeFile", "ANDROID_KEYSTORE_PATH")
+val hasReleaseKey = releaseStoreFile != null && file(releaseStoreFile).exists()
+
 android {
-    namespace = "com.boveda.boveda"
+    namespace = "com.gatojustiniano.boveda"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -15,25 +34,34 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.boveda.boveda"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        // Identificador único de la app. NO cambiarlo después de publicar:
+        // Android lo trataría como otra app y los usuarios perderían sus datos.
+        applicationId = "com.gatojustiniano.boveda"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
-        // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
-        // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
-        // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = signingValue("storePassword", "ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "ANDROID_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasReleaseKey) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn("⚠️  Sin llave de firma: el APK release se firma con la llave de depuración. No lo publiques.")
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

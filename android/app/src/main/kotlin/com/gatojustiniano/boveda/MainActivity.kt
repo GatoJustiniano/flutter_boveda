@@ -1,4 +1,4 @@
-package com.boveda.boveda
+package com.gatojustiniano.boveda
 
 import android.content.ClipData
 import android.content.ClipDescription
